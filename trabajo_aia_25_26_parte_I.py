@@ -977,26 +977,74 @@ def rendimiento(clasif,X,y):
 #------------------------------------------------------------------------------
 
 
+class RandomForest:
+    def __init__(self,n_arboles=5,prop_muestras=1.0,min_ejemplos_nodo_interior=5, max_prof=5,n_atrs=10,prop_umbral=1.0):
+        self.n_arboles = n_arboles
+        self.prop_muestras = prop_muestras
+        # configuracion para instanciar cada arbol
+        self.params_arbol = {
+            'min_ejemplos_nodo_interior': min_ejemplos_nodo_interior,
+            'max_prof': max_prof,
+            'n_atrs': n_atrs,
+            'prop_umbral': prop_umbral
+        }
+        # esta lista contendrá los arboles ya entrenados
+        self.arboles =[]
 
+    def entrena(self,X,y):
+        self.arboles=[] # reiniciar arboles previos si se vuelve a entrenar el modelo
+        n_ejemplos_total = len(X)
+        # cogemos muestras segun la proporcion pasada como parámetro
+        n_muestras = int(n_ejemplos_total * self.prop_muestras)
 
+        for _ in range(self.n_arboles):
+            # Hacemos BAGGING, seleccionamos subconjuntos de datos con reemplazo
+            # cada arbol será entranado con una versión diferente de los datos
+            indices_fila = np.random.choice(n_ejemplos_total,n_muestras,replace=True)
+            X_muestra = X[indices_fila]
+            y_muestra = y[indices_fila]
+        
+            # Instanciamos el árbol desempaquetando el diccionario de hiperparámetros con ** # y lo entrenamos usando únicamente la submuestra (X_muestra, y_muestra) de esta iteración.
+            arbol = ArbolDecision(**self.params_arbol)
+            """
+            Es lo mismo que hacer:
+            arbol = ArbolDecision(
+            min_ejemplos_nodo_interior=min_ejemplos_nodo_interior,
+            max_prof=max_prof,
+            # ... etc
+            )
+            """
+            # Entrenamos arbol con la muestra generada en esta vuelta
+            arbol.entrena(X_muestra, y_muestra)
+            # 5. Añadir el árbol entrenado a nuestra lista 
+            self.arboles.append(arbol)
 
+    def clasifica(self,X):
+        if not self.arboles:
+            raise ClasificadorNoEntrenado("El bosque no ha sido entrenado.")
+        # Recopilamos votos
+        # Obtenemos la prediccion de cada arbol para el conjunto X
+        # - Cada FILA representa un árbol de decisión individual (un clasificador base)
+        # - Cada COLUMNA corresponde a un ejemplo de prueba del conjunto de datos X
+        # Así, la matriz contiene todas las predicciones de todos los clasificadores para todos los ejemplos
+        matriz_votos = np.array([arbol.clasifica(X) for arbol in self.arboles])
+        predicciones_finales = []
 
+        # Voto mayoritario: procesar cada ejemplo de manera individual
+        for i in range(X.shape[0]):
+            # X.shape[0] accede al primer elemento de la tupla, que representa las filas (es decir, cuántos ejemplos o instancias queremos clasificar)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            # Extraer las predicciones de todos los árboles para este ejemplo específico
+            votos_ejemplo = matriz_votos[:, i]
+            
+            # Contar cuántas veces se ha predicho cada clase posible para este ejemplo
+            clases_votadas, conteos = np.unique(votos_ejemplo, return_counts=True)
+            
+            # Seleccionar la clase que recibió el mayor número de votos
+            clase_ganadora = clases_votadas[np.argmax(conteos)]
+            predicciones_finales.append(clase_ganadora)
+            
+        return np.array(predicciones_finales)
 
 
 # =========================================
