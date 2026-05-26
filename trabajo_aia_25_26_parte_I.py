@@ -244,24 +244,31 @@ from carga_datos import *
 # (array(['conceder', 'estudiar', 'no conceder'], dtype='<U11'),
 #  array([81, 91, 88]))
 # ------------------------------------------------------------------
+def particion_entr_prueba(X,y, test=0.20):
+    indices_train = []
+    indices_test = []
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    clases,conteos = np.unique(y, return_counts=True)
+    # Estratificación
+    for clase, conteo in zip(clases,conteos):
+        filas_clase = np.where(y==clase)[0]
+        # Desordenamos indices de esta clase en concreto
+        np.random.shuffle(filas_clase)
+        # Calcular cuantos elementos de la clase van a ir a test (proporcional)
+        # num_clase (conteo) * test (porcentaje) --> en integer
+        n_test_clase = int(np.round(conteo*test))
+        # hacemos slicing para repartir entre train y test segun n_test_clase
+        indices_test.extend(filas_clase[:n_test_clase])
+        indices_train.extend(filas_clase[n_test_clase:])
+        
+    # Tenemos dos listas de enteros con los indices para test y para train, 
+    # ordenados por grupos de clases. Las convertimos en array y barajamos.
+    indices_test = np.array(indices_test)
+    indices_train = np.array(indices_train)
+    np.random.shuffle(indices_test)
+    np.random.shuffle(indices_train)
+    #Usamos arrays de indices para cortar las matrices X e y y devolver las 4 particiones
+    return X[indices_train], X[indices_test], y[indices_train], y[indices_test]
 
 
 # ===============================================
