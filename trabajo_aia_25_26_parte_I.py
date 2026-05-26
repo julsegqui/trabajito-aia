@@ -466,7 +466,7 @@ class ArbolDecision:
 
 
     def _entropia(self, y):
-        """Calcula la entropía de Shanon para un vector de etiquetas y."""
+        """Calcula la entropía de Shanon para un vector de etiquetas y"""
         if len(y) == 0:
             return 0.0
         _, conteos = np.unique(y, return_counts=True)
@@ -489,7 +489,7 @@ class ArbolDecision:
         return ent_padre - (peso_izq * ent_izq + peso_der * ent_der)
 
 
-    def _obtener_umbrales_candidatos(self, X_nodo, y_nodo, atri_idx):
+    def _obtener_umbrales_candidatos(self, X_nodo, y_nodo, atributo):
         """Busca umbrales siguiendo los criterios (a) y (b) del enunciado."""
         n_ejemplos = len(X_nodo)
         if n_ejemplos < 2:
@@ -501,7 +501,7 @@ class ArbolDecision:
         n_submuestra = max(min(n_submuestra, n_ejemplos), 2)
 
         indices_submuestra = random.sample(range(n_ejemplos), n_submuestra)
-        X_sub = X_nodo[indices_submuestra, atri_idx]
+        X_sub = X_nodo[indices_submuestra, atributo]
         y_sub = y_nodo[indices_submuestra]
 
         # Ordenar los valores del atributo en orden creciente
@@ -542,22 +542,22 @@ class ArbolDecision:
         mejor_atri = None
         mejor_umbral = None
 
-        for atri_idx in atributos_permitidos:
-            umbrales = self._obtener_umbrales_candidatos(X, y, atri_idx)
+        for atributo in atributos_permitidos:
+            umbrales = self._obtener_umbrales_candidatos(X, y, atributo)
 
             for u in umbrales:
                 # Particionar índices
-                idx_izq = X[:, atri_idx] <= u
-                idx_der = X[:, atri_idx] > u
+                izquierda = X[:, atributo] <= u
+                derecha = X[:, atributo] > u
 
-                y_izq, y_der = y[idx_izq], y[idx_der]
+                y_izq, y_der = y[izquierda], y[derecha]
 
                 # Evaluar división mediante ganancia de información
                 ganancia = self._ganancia_informacion(y, y_izq, y_der)
 
                 if ganancia > mejor_ganancia:
                     mejor_ganancia = ganancia
-                    mejor_atri = atri_idx
+                    mejor_atri = atributo
                     mejor_umbral = u
 
         # Si ninguna división produjo una ganancia de información positiva real, se vuelve hoja
@@ -565,11 +565,11 @@ class ArbolDecision:
             return Nodo(distr=distr, clase=clase_mayoritaria)
 
         # Particionar conjuntos finales
-        idx_izq = X[:, mejor_atri] <= mejor_umbral
-        idx_der = X[:, mejor_atri] > mejor_umbral
+        izquierda = X[:, mejor_atri] <= mejor_umbral
+        derecha = X[:, mejor_atri] > mejor_umbral
 
-        X_izq, y_izq = X[idx_izq], y[idx_izq]
-        X_der, y_der = X[idx_der], y[idx_der]
+        X_izq, y_izq = X[izquierda], y[izquierda]
+        X_der, y_der = X[derecha], y[derecha]
 
         # Llamadas recursivas
         hijo_izq = self._construye_arbol(
