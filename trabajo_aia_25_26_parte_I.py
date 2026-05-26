@@ -259,14 +259,15 @@ def particion_entr_prueba(X,y, test=0.20):
         # hacemos slicing para repartir entre train y test segun n_test_clase
         indices_test.extend(filas_clase[:n_test_clase])
         indices_train.extend(filas_clase[n_test_clase:])
-        # Tenemos dos listas de enteros con los indices para test y para train, 
-        # ordenados por grupos de clases
-        indices_test = np.array(indices_test)
-        np.random.shuffle(indices_test)
-        indices_train = np.array(indices_train)
-        np.random.shuffle(indices_train)
-        #Usamos arrays de indices para cortar las matrices X e y y devolver las 4 particiones
-        return X[indices_train], X[indices_test], y[indices_train], y[indices_test]
+        
+    # Tenemos dos listas de enteros con los indices para test y para train, 
+    # ordenados por grupos de clases. Las convertimos en array y barajamos.
+    indices_test = np.array(indices_test)
+    indices_train = np.array(indices_train)
+    np.random.shuffle(indices_test)
+    np.random.shuffle(indices_train)
+    #Usamos arrays de indices para cortar las matrices X e y y devolver las 4 particiones
+    return X[indices_train], X[indices_test], y[indices_train], y[indices_test]
 
 
 # ===============================================
