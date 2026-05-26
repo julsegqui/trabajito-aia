@@ -12,13 +12,13 @@
 # --------------------------------------------------------------------------
 # Autor(a) del trabajo:
 #
-# APELLIDOS:
-# NOMBRE: 
+# APELLIDOS: GARCÍA DE LA CRUZ
+# NOMBRE: LAURA
 #
 # Segundo(a) componente (si se trata de un grupo):
 #
-# APELLIDOS:
-# NOMBRE:
+# APELLIDOS: SEGOVIA QUINTANO
+# NOMBRE: JULIA
 # ----------------------------------------------------------------------------
 
 
@@ -81,6 +81,7 @@
 import math
 import random
 import numpy as np
+import sklearn
 
 
 
@@ -454,8 +455,208 @@ class Nodo:
 
 class ClasificadorNoEntrenado(Exception): pass
 
-        
+class ArbolDecision:
 
+    def __init__(self,min_ejemplos_nodo_interior=5,max_prof=10,n_atrs=10,prop_umbral=1.0):
+        self.min_ejemplos_nodo_interior = min_ejemplos_nodo_interior
+        self.max_prof = max_prof
+        self.n_atrs = n_atrs
+        self.prop_umbral = prop_umbral
+        self.raiz = None  # Almacenará el nodo raíz tras el entrenamiento
+
+
+    def _entropia(self, y):
+        """Calcula la entropía de Shanon para un vector de etiquetas y."""
+        if len(y) == 0:
+            return 0.0
+        _, conteos = np.unique(y, return_counts=True)
+        proporciones = conteos / len(y)
+        return -np.sum(proporciones * np.log2(proporciones))
+
+    def _ganancia_informacion(self, y, y_izq, y_der):
+        """Calcula la ganancia de información al dividir un nodo."""
+        n_total = len(y)
+        if n_total == 0:
+            return 0.0
+
+        ent_padre = self._entropia(y)
+        ent_izq = self._entropia(y_izq)
+        ent_der = self._entropia(y_der)
+
+        peso_izq = len(y_izq) / n_total
+        peso_der = len(y_der) / n_total
+
+        return ent_padre - (peso_izq * ent_izq + peso_der * ent_der)
+
+
+    def _obtener_umbrales_candidatos(self, X_nodo, y_nodo, atri_idx):
+        """Busca umbrales siguiendo los criterios (a) y (b) del enunciado."""
+        n_ejemplos = len(X_nodo)
+        if n_ejemplos < 2:
+            return []
+
+        # (b) Muestreo aleatorio según prop_umbral
+        n_submuestra = int(self.prop_umbral * n_ejemplos)
+        # Asegurar al menos 2 elementos para poder buscar puntos medios consecutivos
+        n_submuestra = max(min(n_submuestra, n_ejemplos), 2)
+
+        indices_submuestra = random.sample(range(n_ejemplos), n_submuestra)
+        X_sub = X_nodo[indices_submuestra, atri_idx]
+        y_sub = y_nodo[indices_submuestra]
+
+        # Ordenar los valores del atributo en orden creciente
+        indices_ordenados = np.argsort(X_sub)
+        X_ordenado = X_sub[indices_ordenados]
+        y_ordenado = y_sub[indices_ordenados]
+
+        umbrales = []
+        # (a) Puntos medios entre valores consecutivos donde hay cambio de clase
+        for i in range(len(X_ordenado) - 1):
+            if y_ordenado[i] != y_ordenado[i + 1]:
+                # Evitar duplicados innecesarios si tienen el mismo valor numérico
+                if X_ordenado[i] != X_ordenado[i + 1]:
+                    punto_medio = (X_ordenado[i] + X_ordenado[i + 1]) / 2.0
+                    umbrales.append(punto_medio)
+
+        return umbrales
+
+
+    def _construye_arbol(self, X, y, atributos_permitidos, prof=0):
+        n_ejemplos, n_features = X.shape
+
+        # Distribución de clases actual para almacenar en el nodo
+        clases_unicas, conteos = np.unique(y, return_counts=True)
+        distr = dict(zip(clases_unicas, conteos))
+        clase_mayoritaria = clases_unicas[np.argmax(conteos)]
+
+        # 1. CASO BASE (Criterios de parada)
+        if (
+            prof >= self.max_prof
+            or n_ejemplos < self.min_ejemplos_nodo_interior
+            or len(clases_unicas) == 1
+        ):
+            return Nodo(distr=distr, clase=clase_mayoritaria)
+
+        # 2. EN OTRO CASO: Encontrar la mejor partición
+        mejor_ganancia = -1.0
+        mejor_atri = None
+        mejor_umbral = None
+
+        for atri_idx in atributos_permitidos:
+            umbrales = self._obtener_umbrales_candidatos(X, y, atri_idx)
+
+            for u in umbrales:
+                # Particionar índices
+                idx_izq = X[:, atri_idx] <= u
+                idx_der = X[:, atri_idx] > u
+
+                y_izq, y_der = y[idx_izq], y[idx_der]
+
+                # Evaluar división mediante ganancia de información
+                ganancia = self._ganancia_informacion(y, y_izq, y_der)
+
+                if ganancia > mejor_ganancia:
+                    mejor_ganancia = ganancia
+                    mejor_atri = atri_idx
+                    mejor_umbral = u
+
+        # Si ninguna división produjo una ganancia de información positiva real, se vuelve hoja
+        if mejor_ganancia <= 0.0 or mejor_atri is None:
+            return Nodo(distr=distr, clase=clase_mayoritaria)
+
+        # Particionar conjuntos finales
+        idx_izq = X[:, mejor_atri] <= mejor_umbral
+        idx_der = X[:, mejor_atri] > mejor_umbral
+
+        X_izq, y_izq = X[idx_izq], y[idx_izq]
+        X_der, y_der = X[idx_der], y[idx_der]
+
+        # Llamadas recursivas
+        hijo_izq = self._construye_arbol(
+            X_izq, y_izq, atributos_permitidos, prof + 1
+        )
+        hijo_der = self._construye_arbol(
+            X_der, y_der, atributos_permitidos, prof + 1
+        )
+
+        # Devolver nodo interior
+        return Nodo(
+            atributo=mejor_atri,
+            umbral=mejor_umbral,
+            izq=hijo_izq,
+            der=hijo_der,
+            distr=distr,
+        )
+
+
+    def entrena(self, X, y):
+        n_features = X.shape[1]
+
+        # Sorteo único inicial aleatorio de atributos permitidos
+        k = min(self.n_atrs, n_features)
+        atributos_permitidos = random.sample(range(n_features), k)
+
+        # Comenzar construcción recursiva
+        self.raiz = self._construye_arbol(X, y, atributos_permitidos, prof=0)
+
+    def clasifica_prob(self, x):
+        if self.raiz is None:
+            raise ClasificadorNoEntrenado(
+                "Debe entrenar el árbol antes de clasificar."
+            )
+
+        # Descender recursivamente por el árbol hasta la hoja
+        nodo_actual = self.raiz
+        while not nodo_actual.es_hoja():
+            if x[nodo_actual.atributo] <= nodo_actual.umbral:
+                nodo_actual = nodo_actual.izq
+            else:
+                nodo_actual = nodo_actual.der
+
+        # Calcular proporciones de probabilidad basadas en la distribución de la hoja
+        total_ejemplos_hoja = sum(nodo_actual.distr.values())
+        probabilidades = {
+            clase: cant / total_ejemplos_hoja
+            for clase, cant in nodo_actual.distr.items()
+        }
+        return probabilidades
+
+    def clasifica(self, X):
+        if self.raiz is None:
+            raise ClasificadorNoEntrenado(
+                "Debe entrenar el árbol antes de clasificar."
+            )
+
+        predicciones = []
+        for x in X:
+            # Conseguimos las probabilidades y elegimos la clase con mayor probabilidad
+            probs = self.clasifica_prob(x)
+            clase_max = max(probs, key=probs.get)
+            predicciones.append(clase_max)
+
+        return np.array(predicciones)
+
+    def imprime_arbol(self, nombre_atrs, nombre_clase):
+        if self.raiz is None:
+            raise ClasificadorNoEntrenado(
+                "Debe entrenar el árbol antes de imprimirlo."
+            )
+
+        def _imprime_recursivo(nodo, profundidad=0):
+            margen = "   " * profundidad
+            if nodo.es_hoja():
+                print(
+                    f"{margen}Clase predicha [{nombre_clase}]: {nodo.clase} (Distr: {nodo.distr})"
+                )
+            else:
+                atri_nombre = nombre_atrs[nodo.atributo]
+                print(f"{margen}¿{atri_nombre} <= {nodo.umbral:.4f}?")
+                print(f"{margen}--> SI:")
+                _imprime_recursivo(nodo.izq, profundidad + 1)
+                print(f"{margen}--> NO:")
+                _imprime_recursivo(nodo.der, profundidad + 1)
+
+        _imprime_recursivo(self.raiz)
 
 
 
@@ -951,87 +1152,88 @@ import pandas as pd
 
 # *********** DESCOMENTAR A PARTIR DE AQUÍ
 
-# print("************ PRUEBAS EJERCICIO 1:")
-# print("**********************************\n")
-# Xe_votos,Xp_votos,ye_votos,yp_votos=particion_entr_prueba(X_votos,y_votos,test=1/3)
-# print("Partición votos: ",y_votos.shape[0],ye_votos.shape[0],yp_votos.shape[0])
-# print("Proporción original en votos: ",np.unique(y_votos,return_counts=True))
-# print("Estratificación entrenamiento en votos: ",np.unique(ye_votos,return_counts=True))
-# print("Estratificación prueba en votos: ",np.unique(yp_votos,return_counts=True))
-# print("\n")
+print("************ PRUEBAS EJERCICIO 1:")
+print("**********************************\n")
+Xe_votos,Xp_votos,ye_votos,yp_votos=particion_entr_prueba(X_votos,y_votos,test=1/3)
+print("Partición votos: ",y_votos.shape[0],ye_votos.shape[0],yp_votos.shape[0])
+print("Proporción original en votos: ",np.unique(y_votos,return_counts=True))
+print("Estratificación entrenamiento en votos: ",np.unique(ye_votos,return_counts=True))
+print("Estratificación prueba en votos: ",np.unique(yp_votos,return_counts=True))
+print("\n")
 
-# Xev_cancer,Xp_cancer,yev_cancer,yp_cancer=particion_entr_prueba(X_cancer,y_cancer,test=0.2)
-# print("Proporción original en cáncer: ", np.unique(y_cancer,return_counts=True))
-# print("Estratificación entr-val en cáncer: ",np.unique(yev_cancer,return_counts=True))
-# print("Estratificación prueba en cáncer: ",np.unique(yp_cancer,return_counts=True))
-# Xe_cancer,Xv_cancer,ye_cancer,yv_cancer=particion_entr_prueba(Xev_cancer,yev_cancer,test=0.2)
-# print("Estratificación entrenamiento cáncer: ", np.unique(ye_cancer,return_counts=True))
-# print("Estratificación validación cáncer: ",np.unique(yv_cancer,return_counts=True))
-# print("\n")
+Xev_cancer,Xp_cancer,yev_cancer,yp_cancer=particion_entr_prueba(X_cancer,y_cancer,test=0.2)
+print("Proporción original en cáncer: ", np.unique(y_cancer,return_counts=True))
+print("Estratificación entr-val en cáncer: ",np.unique(yev_cancer,return_counts=True))
+print("Estratificación prueba en cáncer: ",np.unique(yp_cancer,return_counts=True))
+Xe_cancer,Xv_cancer,ye_cancer,yv_cancer=particion_entr_prueba(Xev_cancer,yev_cancer,test=0.2)
+print("Estratificación entrenamiento cáncer: ", np.unique(ye_cancer,return_counts=True))
+print("Estratificación validación cáncer: ",np.unique(yv_cancer,return_counts=True))
+print("\n")
 
-# Xe_credito,Xp_credito,ye_credito,yp_credito=particion_entr_prueba(X_credito,y_credito,test=0.4)
-# print("Estratificación entrenamiento crédito: ",np.unique(ye_credito,return_counts=True))
-# print("Estratificación prueba crédito: ",np.unique(yp_credito,return_counts=True))
-# print("\n\n\n")
-
-
-
-
-
-# print("************ PRUEBAS EJERCICIO 2:")
-# print("**********************************\n")
-
-# clf_titanic = ArbolDecision(max_prof=3,min_ejemplos_nodo_interior=5,n_atrs=3)
-# clf_titanic.entrena(X_train_titanic, y_train_titanic)
-# clf_titanic.imprime_arbol(["Pclass", "Mujer", "Edad"],"Partido")
-# rend_train_titanic = rendimiento(clf_titanic,X_train_titanic,y_train_titanic)
-# rend_test_titanic = rendimiento(clf_titanic,X_test_titanic,y_test_titanic)
-# print(f"****** Rendimiento DT titanic train: {rend_train_titanic}")
-# print(f"****** Rendimiento DT titanic test: {rend_test_titanic}\n\n\n\n ")
-
-
-
-
-# clf_votos = ArbolDecision(min_ejemplos_nodo_interior=3,max_prof=5,n_atrs=16)
-# clf_votos.entrena(Xe_votos, ye_votos)
-# nombre_atrs_votos=[f"Votación {i}" for i in range(1,17)]
-# clf_votos.imprime_arbol(nombre_atrs_votos,"Partido")
-# rend_train_votos = rendimiento(clf_votos,Xe_votos,ye_votos)
-# rend_test_votos = rendimiento(clf_votos,Xp_votos,yp_votos)
-# print(f"****** Rendimiento DT votos en train: {rend_train_votos}")
-# print(f"****** Rendimiento DT votos en test:  {rend_test_votos}\n\n\n\n")
-
-
-
-# clf_iris = ArbolDecision(max_prof=3,n_atrs=4)
-# clf_iris.entrena(X_train_iris, y_train_iris)
-# clf_iris.imprime_arbol(["Long. Sépalo", "Anch. Sépalo", "Long. Pétalo", "Anch. Pétalo"],"Clase")
-# rend_train_iris = rendimiento(clf_iris,X_train_iris,y_train_iris)
-# rend_test_iris = rendimiento(clf_iris,X_test_iris,y_test_iris)
-# print(f"********************* Rendimiento DT iris train: {rend_train_iris}")
-# print(f"********************* Rendimiento DT iris test: {rend_test_iris}\n\n\n\n ")
+Xe_credito,Xp_credito,ye_credito,yp_credito=particion_entr_prueba(X_credito,y_credito,test=0.4)
+print("Estratificación entrenamiento crédito: ",np.unique(ye_credito,return_counts=True))
+print("Estratificación prueba crédito: ",np.unique(yp_credito,return_counts=True))
+print("\n\n\n")
 
 
 
 
 
-# clf_cancer = ArbolDecision(min_ejemplos_nodo_interior=3,max_prof=10,n_atrs=15)
-# clf_cancer.entrena(Xev_cancer, yev_cancer)
-# nombre_atrs_cancer=['mean radius', 'mean texture', 'mean perimeter', 'mean area',
-#         'mean smoothness', 'mean compactness', 'mean concavity',
-#         'mean concave points', 'mean symmetry', 'mean fractal dimension',
-#         'radius error', 'texture error', 'perimeter error', 'area error',
-#         'smoothness error', 'compactness error', 'concavity error',
-#         'concave points error', 'symmetry error',
-#         'fractal dimension error', 'worst radius', 'worst texture',
-#         'worst perimeter', 'worst area', 'worst smoothness',
-#         'worst compactness', 'worst concavity', 'worst concave points',
-#         'worst symmetry', 'worst fractal dimension']
-# clf_cancer.imprime_arbol(nombre_atrs_cancer,"Es benigno")
-# rend_train_cancer = rendimiento(clf_cancer,Xev_cancer,yev_cancer)
-# rend_test_cancer = rendimiento(clf_cancer,Xp_cancer,yp_cancer)
-# print(f"***** Rendimiento DT cancer en train: {rend_train_cancer}")
-# print(f"***** Rendimiento DT cancer en test: {rend_test_cancer}\n\n\n")
+print("************ PRUEBAS EJERCICIO 2:")
+print("**********************************\n")
+
+clf_titanic = ArbolDecision(max_prof=3,min_ejemplos_nodo_interior=5,n_atrs=3)
+clf_titanic.entrena(X_train_titanic, y_train_titanic)
+clf_titanic.imprime_arbol(["Pclass", "Mujer", "Edad"],"Partido")
+rend_train_titanic = rendimiento(clf_titanic,X_train_titanic,y_train_titanic)
+rend_test_titanic = rendimiento(clf_titanic,X_test_titanic,y_test_titanic)
+print(f"****** Rendimiento DT titanic train: {rend_train_titanic}")
+print(f"****** Rendimiento DT titanic test: {rend_test_titanic}\n\n\n\n ")
+
+
+
+
+clf_votos = ArbolDecision(min_ejemplos_nodo_interior=3,max_prof=5,n_atrs=16)
+clf_votos.entrena(Xe_votos, ye_votos)
+nombre_atrs_votos=[f"Votación {i}" for i in range(1,17)]
+clf_votos.imprime_arbol(nombre_atrs_votos,"Partido")
+rend_train_votos = rendimiento(clf_votos,Xe_votos,ye_votos)
+rend_test_votos = rendimiento(clf_votos,Xp_votos,yp_votos)
+print(f"****** Rendimiento DT votos en train: {rend_train_votos}")
+print(f"****** Rendimiento DT votos en test:  {rend_test_votos}\n\n\n\n")
+
+
+
+clf_iris = ArbolDecision(max_prof=3,n_atrs=4)
+X_train_iris,X_test_iris,y_train_iris,y_test_iris=particion_entr_prueba(X_iris,y_iris)
+clf_iris.entrena(X_train_iris, y_train_iris)
+clf_iris.imprime_arbol(["Long. Sépalo", "Anch. Sépalo", "Long. Pétalo", "Anch. Pétalo"],"Clase")
+rend_train_iris = rendimiento(clf_iris,X_train_iris,y_train_iris)
+rend_test_iris = rendimiento(clf_iris,X_test_iris,y_test_iris)
+print(f"********************* Rendimiento DT iris train: {rend_train_iris}")
+print(f"********************* Rendimiento DT iris test: {rend_test_iris}\n\n\n\n ")
+
+
+
+
+
+clf_cancer = ArbolDecision(min_ejemplos_nodo_interior=3,max_prof=10,n_atrs=15)
+clf_cancer.entrena(Xev_cancer, yev_cancer)
+nombre_atrs_cancer=['mean radius', 'mean texture', 'mean perimeter', 'mean area',
+        'mean smoothness', 'mean compactness', 'mean concavity',
+        'mean concave points', 'mean symmetry', 'mean fractal dimension',
+        'radius error', 'texture error', 'perimeter error', 'area error',
+        'smoothness error', 'compactness error', 'concavity error',
+        'concave points error', 'symmetry error',
+        'fractal dimension error', 'worst radius', 'worst texture',
+        'worst perimeter', 'worst area', 'worst smoothness',
+        'worst compactness', 'worst concavity', 'worst concave points',
+        'worst symmetry', 'worst fractal dimension']
+clf_cancer.imprime_arbol(nombre_atrs_cancer,"Es benigno")
+rend_train_cancer = rendimiento(clf_cancer,Xev_cancer,yev_cancer)
+rend_test_cancer = rendimiento(clf_cancer,Xp_cancer,yp_cancer)
+print(f"***** Rendimiento DT cancer en train: {rend_train_cancer}")
+print(f"***** Rendimiento DT cancer en test: {rend_test_cancer}\n\n\n")
 
 
 
