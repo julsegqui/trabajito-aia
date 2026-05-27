@@ -1097,20 +1097,72 @@ import pandas as pd
 # * X_train_credito, y_train_credito, X_test_credito, y_test_credito
 #   conteniendo el dataset de crédito con los atributos numñericos:
 
+# Convertimos a array de numpy para facilitar la manipulación por columnas
+dataset = np.array(credito.datos_con_clas)
+
+# 2. Separar características (X) y la variable objetivo/clase (y)
+# X_credito toma todas las filas y las primeras 6 columnas (atributos)
+X_credito = dataset[:, :-1]
+
+# y_credito toma todas las filas y la última columna (clase)
+y_credito = dataset[:, -1]
+
+# Creamos la instancia del codificador
+encoder = OrdinalEncoder()
+
+# Ajustamos con los datos y transformamos las características categóricas en numéricas
+X_credito_encoded = encoder.fit_transform(X_credito)
+
+# Para la variable 'y' no es necesario el OrdinalEncoder.
+# Dejamos 'y' original
+
+X_train_credito, X_test_credito, y_train_credito, y_test_credito = particion_entr_prueba(X_credito_encoded, y_credito)
 
 
 
-
-
-
-
+print("X Original (Ejemplo primera fila):", X_credito[0])
+print("X Codificado (Ejemplo primera fila):", X_credito_encoded[0])
+print("\nDimensiones de los conjuntos:")
+print(f"Entrenamiento: {X_train_credito.shape[0]} muestras")
+print(f"Prueba: {X_test_credito.shape[0]} muestras")
 
 
 # * X_train_adult, y_train_adult, X_test_adult, y_test_adult
 #   conteniendo el AdultDataset con los atributos numéricos:
 
+# Cargamos el archivo CSV.
+df_adult = pd.read_csv(r"datos\adultDataset.csv")
+
+# La última columna ('income') es la variable a predecir
+X_adult = df_adult.iloc[:, :-1]
+y_adult = df_adult.iloc[:, -1]
+
+# Identificamos las columnas categóricas por su nombre o posición
+columnas_categoricas = X_adult.columns[4:]
+
+# Creamos e inicializamos el OrdinalEncoder
+encoder_adult = OrdinalEncoder()
+
+# Ajustamos y transformamos solo las columnas categóricas.
+# Modificamos el DataFrame directamente sobre esas columnas.
+X_adult[columnas_categoricas] = encoder_adult.fit_transform(X_adult[columnas_categoricas])
+
+X_train_adult, X_test_adult, y_train_adult, y_test_adult = particion_entr_prueba(X_adult.values, y_adult.values)
 
 
+
+
+
+
+X_adult_original = pd.read_csv("datos/adultDataset.csv").iloc[:, :-1]
+print("X Original (Categorías en texto):")
+print(X_adult_original.iloc[0].to_dict())
+print("\nX Codificado (Numérico a partir de la 5ª columna):")
+print(X_adult.iloc[0].to_dict()) 
+print("DIMENSIONES DE LOS CONJUNTOS (ADULT)")
+print(f"Total de muestras en el dataset: {X_adult.shape[0]}")
+print(f"Entrenamiento (X_train_adult):   {X_train_adult.shape[0]} muestras")
+print(f"Prueba (X_test_adult):           {X_test_adult.shape[0]} muestras")
 
 
 
@@ -1120,8 +1172,54 @@ import pandas as pd
 # * X_train_dg, y_train_dg, X_valid_dg, y_valid_dg, X_test_dg, y_test_dg
 #   conteniendo el dataset de los dígitos escritos a mano:
     
+def leer_imagenes_digitdata(ruta_fichero, alto=28, ancho=28):
+    imagenes = []
+    
+    # Abrimos el archivo
+    with open(ruta_fichero, 'r', encoding='utf-8') as f:
+        lineas = f.readlines()
+        
+    for i in range(0, len(lineas), alto):
+        bloque_imagen = lineas[i:i+alto]
+        if len(bloque_imagen) < alto:
+            break
+            
+        matriz_imagen = []
+        for linea in bloque_imagen:
+            linea_limpia = linea.replace('\n', '').ljust(ancho)
+            fila_pixeles = [0 if char == ' ' else 1 for char in linea_limpia[:ancho]]
+            matriz_imagen.append(fila_pixeles)
+            
+        imagenes.append(np.array(matriz_imagen).flatten())
+        
+    return np.array(imagenes)
 
 
+def leer_etiquetas_digitdata(ruta_fichero):
+    
+    with open(ruta_fichero, 'r', encoding='utf-8') as f:
+        etiquetas = [int(linea.strip()) for linea in f if linea.strip()]
+        
+    return np.array(etiquetas)
+
+
+ruta_digitdata = "datos/digitdata/"
+
+# 1. Conjunto de ENTRENAMIENTO
+X_train_dg = leer_imagenes_digitdata(ruta_digitdata + "trainingimages")
+y_train_dg = leer_etiquetas_digitdata(ruta_digitdata + "traininglabels")
+
+# 2. Conjunto de VALIDACIÓN
+X_valid_dg = leer_imagenes_digitdata(ruta_digitdata + "validationimages")
+y_valid_dg = leer_etiquetas_digitdata(ruta_digitdata + "validationlabels")
+
+# 3. Conjunto de PRUEBA (TEST)
+X_test_dg = leer_imagenes_digitdata(ruta_digitdata + "testimages")
+y_test_dg = leer_etiquetas_digitdata(ruta_digitdata + "testlabels")
+
+print(f"Entrenamiento: X={X_train_dg.shape}, y={y_train_dg.shape}")
+print(f"Validación:    X={X_valid_dg.shape}, y={y_valid_dg.shape}")
+print(f"Prueba (Test):  X={X_test_dg.shape}, y={y_test_dg.shape}")
 
 
 
