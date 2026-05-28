@@ -1100,7 +1100,7 @@ import pandas as pd
 # Convertimos a array de numpy para facilitar la manipulación por columnas
 dataset = np.array(credito.datos_con_clas)
 
-# 2. Separar características (X) y la variable objetivo/clase (y)
+# Separar características (X) y la variable objetivo/clase (y)
 # X_credito toma todas las filas y las primeras 6 columnas (atributos)
 X_credito = dataset[:, :-1]
 
@@ -1127,7 +1127,7 @@ print(f"Entrenamiento: {X_train_credito.shape[0]} muestras")
 print(f"Prueba: {X_test_credito.shape[0]} muestras")
 
 
-# * X_train_adult, y_train_adult, X_test_adult, y_test_adult
+#  X_train_adult, y_train_adult, X_test_adult, y_test_adult
 #   conteniendo el AdultDataset con los atributos numéricos:
 
 # Cargamos el archivo CSV.
@@ -1169,7 +1169,7 @@ print(f"Prueba (X_test_adult):           {X_test_adult.shape[0]} muestras")
 
 
 
-# * X_train_dg, y_train_dg, X_valid_dg, y_valid_dg, X_test_dg, y_test_dg
+# X_train_dg, y_train_dg, X_valid_dg, y_valid_dg, X_test_dg, y_test_dg
 #   conteniendo el dataset de los dígitos escritos a mano:
     
 def leer_imagenes_digitdata(ruta_fichero, alto=28, ancho=28):
