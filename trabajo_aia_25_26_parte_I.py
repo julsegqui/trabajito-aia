@@ -1255,11 +1255,131 @@ print(f"Prueba (Test):  X={X_test_dg.shape}, y={y_test_dg.shape}")
 # el archivo. 
 
 # ----------------------------
+"""
+# Explicacion del proceso paso a paso
+# Para encontrar la mejor combinación de hiperparámetros, realizamos una 
+# Grid Search utilizando un conjunto de Validación
+# 
+# PASO 1: Extraer un conjunto de Validación.
+#   - Para 'Dígitos', ya disponemos de X_valid_dg y y_valid_dg
+#   - Para 'Crédito' y 'AdultDataset', tomamos su conjunto de entrenamiento original 
+#     (X_train) y lo particionamos de nuevo para extraer un 20% para validación.
+#
+# PASO 2: Definir el espacio de búsqueda.
+#   - Elegimos valores para n_arboles (ej. 10, 25, 50) y max_prof (ej. 5, 10, 15)
+#
+# PASO 3: Entrenar y Evaluar en Bucle.
+#   - Entrenamos el RandomForest con la parte de entrenamiento puro
+#   - Clasificamos el conjunto de validación y nos quedamos con el de mayor 'accuracy'
+#
+# PASO 4: Modelo Final y Evaluación en Test
+#   - Unimos (Entrenamiento + Validación) y re-entrenamos con la mejor configuración
+#   - Evaluamos por última vez con el conjunto de Prueba (Test) que estaba oculto
+
+# Definimos una función que calcule la precisión
+def calcular_precision(y_real, y_pred):
+    return np.mean(y_real == y_pred)
+
+# Valores de hiperparámetros a explorar 
+lista_n_arboles = [10, 25, 50]
+lista_max_prof = [5, 10, 15]
+
+# 1. AJUSTE: DATASET CRÉDITO
+print("\n--- BÚSQUEDA DE HIPERPARÁMETROS: CRÉDITO ---")
+# Partición
+X_tr_cred, X_val_cred, y_tr_cred, y_val_cred = particion_entr_prueba(X_train_credito, y_train_credito, test=0.20)
+
+#Creamos dos variables vacias que iran apuntando cual es el accuracy más alto y con que configuracion de parámetros lo conseguimos
+mejor_acc_cred = 0
+mejores_params_cred = None
+
+# Bucle de evaluación (Grid Search) - probamos todas las combinaciones posibles
+for n_arb in lista_n_arboles:
+    for prof in lista_max_prof:
+        rf = RandomForest(n_arboles=n_arb, max_prof=prof) # Se crea bosque con combinacion 
+        rf.entrena(X_tr_cred, y_tr_cred) # Se entrena con datos de entrenamiento 
+        acc = calcular_precision(y_val_cred, rf.clasifica(X_val_cred)) # Calculamos el accuracy
+        
+        print(f"Crédito -> n_arboles: {n_arb}, max_prof: {prof} | Accuracy Validación: {acc:.4f}")
+        if acc > mejor_acc_cred:
+            mejor_acc_cred = acc
+            mejores_params_cred = (n_arb, prof) #Vamos actualizando el mejor accuracy
+
+print(f"> Mejores hiperparámetros Crédito: {mejores_params_cred[0]} árboles, prof {mejores_params_cred[1]}")
+
+# Re-entrenamiento y Test Final
+# Como X_train_credito ya contiene la unión de X_tr_cred + X_val_cred, lo usamos directamente.
+# Creamos random forest usando los mejores hiperparámetros
+rf_final_cred = RandomForest(n_arboles=mejores_params_cred[0], max_prof=mejores_params_cred[1])
+rf_final_cred.entrena(X_train_credito, y_train_credito) 
+acc_test_cred = calcular_precision(y_test_credito, rf_final_cred.clasifica(X_test_credito))
+print(f"> RENDIMIENTO DEFINITIVO EN TEST (CRÉDITO): {acc_test_cred:.4f}\n")
 
 
+# 2. AJUSTE: ADULT DATASET
+print("--- BÚSQUEDA DE HIPERPARÁMETROS: ADULT DATASET ---")
+# Partición
+X_tr_adult, X_val_adult, y_tr_adult, y_val_adult = particion_entr_prueba(X_train_adult, y_train_adult, test=0.20)
+
+mejor_acc_adult = 0
+mejores_params_adult = None
+
+for n_arb in lista_n_arboles:
+    for prof in lista_max_prof:
+        rf = RandomForest(n_arboles=n_arb, max_prof=prof)
+        rf.entrena(X_tr_adult, y_tr_adult)
+        acc = calcular_precision(y_val_adult, rf.clasifica(X_val_adult))
+        
+        print(f"Adult -> n_arboles: {n_arb}, max_prof: {prof} | Accuracy Validación: {acc:.4f}")
+        if acc > mejor_acc_adult:
+            mejor_acc_adult = acc
+            mejores_params_adult = (n_arb, prof)
+
+print(f"> Mejores hiperparámetros Adult: {mejores_params_adult[0]} árboles, prof {mejores_params_adult[1]}")
+
+# Re-entrenamiento y Test Final
+rf_final_adult = RandomForest(n_arboles=mejores_params_adult[0], max_prof=mejores_params_adult[1])
+rf_final_adult.entrena(X_train_adult, y_train_adult)
+acc_test_adult = calcular_precision(y_test_adult, rf_final_adult.clasifica(X_test_adult))
+print(f"> RENDIMIENTO DEFINITIVO EN TEST (ADULT): {acc_test_adult:.4f}\n")
 
 
+# 3. AJUSTE: DÍGITOS
+print("--- BÚSQUEDA DE HIPERPARÁMETROS: DÍGITOS ---")
+# Partición: ya disponemos de X_valid_dg y y_valid_dg explícitos de los archivos.
 
+mejor_acc_dg = 0
+mejores_params_dg = None
+
+for n_arb in lista_n_arboles:
+    for prof in lista_max_prof:
+        #Las imágenes de los dígitos miden 28x28 píxeles, es decir, tienen 784 características (784 columnas)
+        # Como la raíz cuadrada de 784 es 28, le forzamos ese valor. 
+        # Es una regla para random forest, que cada árbol mire una cantidad de atributos igual a la raiz cuadrada
+        rf = RandomForest(n_arboles=n_arb, max_prof=prof, n_atrs=28)
+        rf.entrena(X_train_dg, y_train_dg)
+        acc = calcular_precision(y_valid_dg, rf.clasifica(X_valid_dg))
+        
+        print(f"Dígitos -> n_arboles: {n_arb}, max_prof: {prof} | Accuracy Validación: {acc:.4f}")
+        if acc > mejor_acc_dg:
+            mejor_acc_dg = acc
+            mejores_params_dg = (n_arb, prof)
+
+print(f"> Mejores hiperparámetros Dígitos: {mejores_params_dg[0]} árboles, prof {mejores_params_dg[1]}")
+
+# Unimos Train + Validación explícitamente para el entrenamiento final
+# Una vez sabemos cuántos árboles y cuánta profundidad son los ideales, el conjunto de validación no nos sirve para
+# evaluar asi que lo juntamos con el conjunto de entrenamiento:
+X_train_val_dg = np.vstack((X_train_dg, X_valid_dg)) # vstack apila las matrices de datos (X) una encima de la otra
+y_train_val_dg = np.concatenate((y_train_dg, y_valid_dg)) # Junta lista de etiquetas (y)
+
+rf_final_dg = RandomForest(n_arboles=mejores_params_dg[0], max_prof=mejores_params_dg[1], n_atrs=28)
+rf_final_dg.entrena(X_train_val_dg, y_train_val_dg)
+acc_test_dg = calcular_precision(y_test_dg, rf_final_dg.clasifica(X_test_dg))
+print(f"> RENDIMIENTO DEFINITIVO EN TEST (DÍGITOS): {acc_test_dg:.4f}\n")
+
+
+"""
 
 
 
